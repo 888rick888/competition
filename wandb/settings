@@ -1,0 +1,6 @@
+[default]
+entity = rickkkkk
+project = olimpics
+base_url = https://api.wandb.ai
+mode = disabled
+
