@@ -1,13 +1,7 @@
-import os
-import glob
-import sys
-from tkinter import Image
 import numpy as np
 import random
 from collections import deque
-import signal
 import time
-from datetime import datetime
 import pandas as pd
 import scipy.signal
 
@@ -21,12 +15,12 @@ from tensorflow.python.keras.layers.pooling import GlobalAveragePooling2D, Globa
 import tensorflow_probability as tfp
 from tensorflow.python.keras.utils.vis_utils import plot_model
 
-from olympics_engine.train.train_ppo import RENDER
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-gpus = tf.config.experimental.list_physical_devices('GPU')#获取GPU列表
-print('----gpus---',gpus)
-tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*12)])
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# gpus = tf.config.experimental.list_physical_devices('GPU')#获取GPU列表
+# print('----gpus---',gpus)
+# tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*12)])
 
+from olympics_engine.train.train_ppo import RENDER
 from olympics_engine.scenario import table_hockey, football, wrestling, Running_competition
 from olympics_engine.agent import *
 from olympics_engine.generator import create_scenario
@@ -35,7 +29,6 @@ from olympics_engine.generator import create_scenario
 import matplotlib.pyplot as plt
 import wandb
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR) # 隐藏warning
-
 
 RANDOMSEED = 1
 tf.random.set_seed(RANDOMSEED)
@@ -51,15 +44,13 @@ GAE = 1
 
 STATE_SIZE = 1600
 ACTION_DIM = 2
-SEGMENTATION = 0
-EFFICIENT = 0
 
 BATCH_SIZE = 128
 LR_A = 0.0001
 LR_C = 0.0002
 GAMMA = 0.98
 TRAIN_EPISODES = 10000  # total number of episodes for training
-MAX_STEPS = 4000  # total number of steps for each episode
+MAX_STEPS = 400  # total number of steps for each episode
 ACTOR_UPDATE_STEPS = 5  # actor update steps
 CRITIC_UPDATE_STEPS = 5  # critic update steps
 EPSILON = 0.2 # ppo-clip parameters
@@ -73,7 +64,7 @@ LAM = 0.5
 if GAE:
     GAMMA = 0.98
 
-wandb.init(project="olimpics", entity="rickkkkk", reinit=True, name="FinalCONV64_origin_30901017")
+wandb.init(project="olimpics", entity="rickkkkk", reinit=True, name="ppo_first")
 wandb.config.hyper_patamter = {
     "State_size": STATE_SIZE,
     "learning_rate_Actor": LR_A,
@@ -83,10 +74,7 @@ wandb.config.hyper_patamter = {
     "Actor_uodate_steps":ACTOR_UPDATE_STEPS,
     "Critic_uodate_steps":CRITIC_UPDATE_STEPS,
     "lambda_GAE":LAMBDA,
-    "semantic_segmentation" : SEGMENTATION,
-    "EfficientNet": EFFICIENT
 }
-
 
 # def my_handler(signum, frame):
 #     global stop
@@ -98,7 +86,8 @@ class Agent(object):
         self.epsilon = EPSILON
         self.gamma = GAMMA
         self.batch_size = BATCH_SIZE
-        self.action_bound = 200
+        self.action_bound_force = 200
+        self.action_bound_angle = 30
         self.train_count = 0
         self.method = 'clip'
         self.lam = LAMBDA
@@ -143,7 +132,8 @@ class Agent(object):
         h3 = Dense(800,activation='relu')(h2)
         h4 = Dense(256,activation='relu')(h3)
         h5 = Dense(64,activation='relu')(h4)
-        Steering = Dense(ACTION_DIM, activation='tanh')(h5)
+        Steering = Dense(ACTION_DIM)(h5)
+        # Steering = Dense(ACTION_DIM, activation='tanh')(h5)
         # force = Dense(1, activation='tanh')(h5)
         # model_c = Model(inputs=state_input_c, outputs=[Steering, force])
         model_c = Model(inputs=state_input_c, outputs=[Steering])
@@ -154,9 +144,6 @@ class Agent(object):
         with tf.GradientTape() as tape:
             mean, std = self.actor_model(state)
             pi = tfp.distributions.Normal(mean, std)
-
-            # old_mean, old_std = self.actor_old_model(state)
-            # old_pi = tfp.distributions.Normal(old_mean, old_std)
 
             ratio = tf.exp(pi.log_prob(action) - old_pi.log_prob(action))
             surr = ratio * adv
@@ -170,7 +157,6 @@ class Agent(object):
         a_gard = tape.gradient(loss, self.actor_model.trainable_weights)
         # self.actor_opt.apply_gradients(zip(a_gard, self.actor_model.trainable_weights))
         self.actor_optimizer.apply_gradients(zip(a_gard, self.actor_model.trainable_weights))
-
         if self.method == 'kl_pen':
             return kl_mean
 
@@ -178,7 +164,6 @@ class Agent(object):
             wandb.log({"Actor_loss": loss})
 
     def train_critic(self, reward, state):
-        
         reward = np.array(reward, dtype=np.float32)
         with tf.GradientTape() as tape:
             advantage = reward - self.critic_model(state)
@@ -201,7 +186,6 @@ class Agent(object):
             adv = self.discounted_cumulative_sums(adv, self.gamma * self.lam)
         
         print("==========  I am updating ~~~  ==========")
-
         # update actor
         if self.method == 'kl_pen':
             for _ in range(ACTOR_UPDATE_STEPS):
@@ -233,7 +217,7 @@ class Agent(object):
         else:
             pi = tfp.distributions.Normal(mean, std)
             action = tf.squeeze(pi.sample(1), axis=0)[0]  # choosing action
-        return np.clip(action, -self.action_bound, self.action_bound)
+        return np.clip(action, [-100, -self.action_bound_angle], [200, self.action_bound_angle])
 
     def save_model(self):
         try:
@@ -347,13 +331,14 @@ if __name__ == "__main__":
                 step += 1
 
                 action_opponent = opponent_agent.act(obs_oppo_agent)        #opponent action
-                action_opponent = [0,0]  #here we assume the opponent is not moving in the demo
+                # action_opponent = [0,0]  #here we assume the opponent is not moving in the demo
 
-                action_ctrl= agent.get_action(obs_ctrl_agent)
+                action_ctrl= agent.get_action(obs_ctrl_agent) #action_ctrl[0] is force , action_ctrl[1] is angle
                 action = [action_opponent, action_ctrl] if ctrl_agent_index == 1 else [action_ctrl, action_opponent]
 
+                print("action is ", action_ctrl)
                 next_state, reward, done, _ = env.step(action)
-                print("action is ", action[0], "reward is", reward[0])
+                # reward[0] += 0.1
 
                 if isinstance(next_state[ctrl_agent_index], type({})):
                     next_obs_ctrl_agent, next_energy_ctrl_agent = next_state[ctrl_agent_index]['agent_obs'].flatten(), env.agent_list[ctrl_agent_index].energy
