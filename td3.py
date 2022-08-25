@@ -46,7 +46,7 @@ ACTION_DIM = 2
 BUFF_SIZE = 1000000
 TRAIN_EPISODES = 10000
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 LR_A = 0.0001
 LR_C = 0.0002
 GAMMA = 0.95
@@ -168,7 +168,7 @@ class Agent(object):
             err_batch = self.update_err(np.asarray(q_value), np.asarray(q_target))
             self.buff.batch_update(tree_idx, err_batch)
 
-    # @tf.function
+    @tf.function
     def train_actor(self,s_ts, actions):
         with tf.GradientTape() as tape:
             actions_out = self.actor_model([s_ts, actions], training=True)
@@ -216,11 +216,11 @@ class Agent(object):
         return critic_value, y
 
     def update_target(self):
-        self.update_actor_target()
-        self.update_critic_target()
-        # self.update_target_each(self.target_actor_model.variables, self.actor_model.variables, self.tau)
-        # self.update_target_each(self.target_critic_model.variables, self.critic_model.variables, self.tau)
-        # self.update_target_each(self.target_critic_model_2.variables, self.critic_model_2.variables, self.tau)
+        # self.update_actor_target()
+        # self.update_critic_target()
+        self.update_target_each(self.target_actor_model.variables, self.actor_model.variables, self.tau)
+        self.update_target_each(self.target_critic_model.variables, self.critic_model.variables, self.tau)
+        self.update_target_each(self.target_critic_model_2.variables, self.critic_model_2.variables, self.tau)
     
     def update_actor_target(self):
         actor_model_weights = self.actor_model.get_weights()
@@ -230,7 +230,7 @@ class Agent(object):
         self.target_actor_model.set_weights(actor_target_weights)
     
     @tf.function
-    def update_target_each(target_weights, weights, tau):
+    def update_target_each(self, target_weights, weights, tau):
         for (a, b) in zip(target_weights, weights):
             a.assign(b * tau + a * (1 - tau))
  
