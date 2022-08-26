@@ -15,6 +15,7 @@ from tensorflow.python.keras.layers.pooling import GlobalAveragePooling2D, Globa
 import tensorflow_probability as tfp
 from tensorflow.python.keras.utils.vis_utils import plot_model
 
+import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # gpus = tf.config.experimental.list_physical_devices('GPU')#获取GPU列表
 # print('----gpus---',gpus)
