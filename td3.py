@@ -56,6 +56,9 @@ NOISE_EXPLORE_STD = 0.2
 NOISE_POLICY_STD = 0.4
 REGULARIZER_L2 = 0.001
 
+TEST_EPISODES = 10
+MAX_STEPS = 10000
+
 EPSILON = 0.999
 # EPSILON = 0.001
 EPSILON_DECAY = 0.999
@@ -111,34 +114,36 @@ class Agent(object):
     def create_actor_model(self):
         steer_input = Input(shape=(ACTION_DIM))
         state_input = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='relu')(state_input)
-        h2 = Dense(3200,activation='relu')(h1)
-        h3 = Dense(800,activation='relu')(h2)
-        h4 = Dense(256,activation='relu')(h3)
-        state_output = Dense(128,activation='relu')(h4)
-        steer_output = Dense(32, activation='relu')(steer_input)
+        h1 = Dense(6400,activation='elu')(state_input)
+        h2 = Dense(3200,activation='elu')(h1)
+        h3 = Dense(800,activation='elu')(h2)
+        h4 = Dense(256,activation='elu')(h3)
+        state_output = Dense(128,activation='elu')(h4)
+        steer_output = Dense(32, activation='elu')(steer_input)
         merge1 = Concatenate()([state_output,steer_output])
-        h11 = Dense(512,activation='relu')(merge1)
-        h22 = Dense(256,activation='relu')(h11)
-        action_out = Dense(ACTION_DIM)(h22)
+        # h11 = Dense(512,activation='elu')(merge1)
+        h22 = Dense(256,activation='elu')(merge1)
+        action_out = Dense(ACTION_DIM,activation='tanh')(h22)
+        # action_out = Dense(ACTION_DIM)(h22)
         model = Model(inputs=[state_input, steer_input], outputs=action_out)
         return state_input, model
     
     def create_critic_model(self):
-        steer_input = Input(shape=(ACTION_DIM))
-        state_input = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='relu')(state_input)
-        h2 = Dense(3200,activation='relu')(h1)
-        h3 = Dense(800,activation='relu')(h2)
-        h4 = Dense(256,activation='relu')(h3)
-        state_output = Dense(128,activation='relu')(h4)
-        steer_output = Dense(32, activation='relu')(steer_input)
-        merge1 = Concatenate()([state_output,steer_output])
-        h11 = Dense(512,activation='relu')(merge1)
-        h22 = Dense(256,activation='relu')(h11)
-        action_out = Dense(ACTION_DIM)(h22)
-        model = Model(inputs=[state_input, steer_input], outputs=action_out)
-        return state_input, steer_input, model
+        steer_input_c = Input(shape=(ACTION_DIM))
+        state_input_c = Input(shape=(STATE_SIZE))
+        h1_c = Dense(6400,activation='elu')(state_input_c)
+        h2_c = Dense(3200,activation='elu')(h1_c)
+        h3_c = Dense(800,activation='elu')(h2_c)
+        h4_c = Dense(256,activation='elu')(h3_c)
+        state_output_c = Dense(128,activation='elu')(h4_c)
+        steer_output_c = Dense(32, activation='elu')(steer_input_c)
+        merge1_c = Concatenate()([state_output_c,steer_output_c])
+        # h11_c = Dense(512,activation='elu')(merge1_c)
+        h22_c = Dense(256,activation='elu')(merge1_c)
+        # action_out = Dense(ACTION_DIM)(h22)
+        action_out_c = Dense(ACTION_DIM,activation='tanh')(h22_c)
+        model_c = Model(inputs=[state_input_c, steer_input_c], outputs=action_out_c)
+        return state_input_c, steer_input_c, model_c
 
     def remember(self,s_t,action,reward,s_t1,done):
         experiences = (s_t,action,reward,s_t1,done)
@@ -262,7 +267,10 @@ class Agent(object):
             # a_t[0][1] = control.throttle
             return a_t
         a_predict = self.actor_model([s_t, get_action])
-        return np.clip(np.squeeze(self.noise.add_noise(a_predict, std=NOISE_EXPLORE_STD)), [-100, -self.action_bound_angle], [200, self.action_bound_angle])
+        # action_out = np.clip(np.squeeze(self.noise.add_noise(a_predict, std=NOISE_EXPLORE_STD)), [-100, -self.action_bound_angle], [200, self.action_bound_angle])
+        action_out = np.squeeze(self.noise.add_noise(a_predict, std=NOISE_EXPLORE_STD))
+        print("the origin action is ", a_predict, "the action_out is ", action_out)
+        return action_out
 
     def stack_samples(self, samples):       #maybe
         s_ts = np.array([e[0] for e in samples], dtype='float32')
@@ -373,7 +381,10 @@ if __name__ == "__main__":
                 # action_opponent = [0,0]  #here we assume the opponent is not moving in the demo
 
                 action_ctrl= agent.act(obs_ctrl_agent) #action_ctrl[0] is force , action_ctrl[1] is angle
-                action = [action_opponent, action_ctrl] if ctrl_agent_index == 1 else [action_ctrl, action_opponent]
+                action_ctrl_t = np.array(action_ctrl)
+                action_ctrl_t[0] = np.clip(action_ctrl_t[0] * 200, -100, 200)
+                action_ctrl_t[1] = np.clip(action_ctrl_t[1] * 30, -agent.action_bound_angle, agent.action_bound_angle)
+                action = [action_opponent, action_ctrl_t] if ctrl_agent_index == 1 else [action_ctrl_t, action_opponent]
 
                 print("action is ", action_ctrl)
                 next_state, reward, done, _ = env.step(action)
@@ -403,9 +414,7 @@ if __name__ == "__main__":
                 agent.train()
 
                 if step % 3 ==0:
-                    t = time.time()
                     agent.update_target()
-                    print("time spent is", time.time() - t)
 
                 if RENDER:
                     env.render()

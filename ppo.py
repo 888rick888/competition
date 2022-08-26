@@ -111,11 +111,11 @@ class Agent(object):
 
     def create_actor_model(self):
         state_input = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='relu')(state_input)
-        h2 = Dense(3200,activation='relu')(h1)
-        h3 = Dense(800,activation='relu')(h2)
-        h4 = Dense(256,activation='relu')(h3)
-        h5 = Dense(64,activation='relu')(h4)
+        h1 = Dense(6400,activation='elu')(state_input)
+        h2 = Dense(3200,activation='elu')(h1)
+        h3 = Dense(800,activation='elu')(h2)
+        h4 = Dense(256,activation='elu')(h3)
+        h5 = Dense(64,activation='elu')(h4)
         Steering_mean = Dense(ACTION_DIM)(h5)
         # Steering_mean = Dense(ACTION_DIM, activation='tanh')(h5)
         Steering_sigma = Dense(ACTION_DIM, activation='softplus')(h5)
@@ -127,11 +127,11 @@ class Agent(object):
     
     def create_critic_model(self):
         state_input_c = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='relu')(state_input_c)
-        h2 = Dense(3200,activation='relu')(h1)
-        h3 = Dense(800,activation='relu')(h2)
-        h4 = Dense(256,activation='relu')(h3)
-        h5 = Dense(64,activation='relu')(h4)
+        h1 = Dense(6400,activation='elu')(state_input_c)
+        h2 = Dense(3200,activation='elu')(h1)
+        h3 = Dense(800,activation='elu')(h2)
+        h4 = Dense(256,activation='elu')(h3)
+        h5 = Dense(64,activation='elu')(h4)
         Steering = Dense(ACTION_DIM)(h5)
         # Steering = Dense(ACTION_DIM, activation='tanh')(h5)
         # force = Dense(1, activation='tanh')(h5)
@@ -217,7 +217,9 @@ class Agent(object):
         else:
             pi = tfp.distributions.Normal(mean, std)
             action = tf.squeeze(pi.sample(1), axis=0)[0]  # choosing action
-        return np.clip(action, [-100, -self.action_bound_angle], [200, self.action_bound_angle])
+        action_out = np.clip(action, [-100, -self.action_bound_angle], [200, self.action_bound_angle])
+        print("the origin action is ", action, "the action_out is ", action_out)
+        return action_out
 
     def save_model(self):
         try:
@@ -336,7 +338,7 @@ if __name__ == "__main__":
                 action_ctrl= agent.get_action(obs_ctrl_agent) #action_ctrl[0] is force , action_ctrl[1] is angle
                 action = [action_opponent, action_ctrl] if ctrl_agent_index == 1 else [action_ctrl, action_opponent]
 
-                print("action is ", action_ctrl)
+                # print("action is ", action_ctrl)
                 next_state, reward, done, _ = env.step(action)
                 # reward[0] += 0.1
 
