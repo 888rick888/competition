@@ -45,14 +45,14 @@ GAE = 1
 STATE_SIZE = 1600
 ACTION_DIM = 2
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 LR_A = 0.0001
 LR_C = 0.0002
 GAMMA = 0.98
 TRAIN_EPISODES = 10000  # total number of episodes for training
 MAX_STEPS = 400  # total number of steps for each episode
-ACTOR_UPDATE_STEPS = 5  # actor update steps
-CRITIC_UPDATE_STEPS = 5  # critic update steps
+ACTOR_UPDATE_STEPS = 10  # actor update steps
+CRITIC_UPDATE_STEPS = 10  # critic update steps
 EPSILON = 0.2 # ppo-clip parameters
 LAMBDA = 0.98
 
@@ -111,8 +111,8 @@ class Agent(object):
 
     def create_actor_model(self):
         state_input = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='elu')(state_input)
-        h2 = Dense(3200,activation='elu')(h1)
+        h1 = Dense(3200,activation='elu')(state_input)
+        h2 = Dense(1600,activation='elu')(h1)
         h3 = Dense(800,activation='elu')(h2)
         h4 = Dense(256,activation='elu')(h3)
         h5 = Dense(64,activation='elu')(h4)
@@ -127,8 +127,8 @@ class Agent(object):
     
     def create_critic_model(self):
         state_input_c = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='elu')(state_input_c)
-        h2 = Dense(3200,activation='elu')(h1)
+        h1 = Dense(3200,activation='elu')(state_input_c)
+        h2 = Dense(1600,activation='elu')(h1)
         h3 = Dense(800,activation='elu')(h2)
         h4 = Dense(256,activation='elu')(h3)
         h5 = Dense(64,activation='elu')(h4)
@@ -146,6 +146,7 @@ class Agent(object):
             pi = tfp.distributions.Normal(mean, std)
 
             ratio = tf.exp(pi.log_prob(action) - old_pi.log_prob(action))
+            print("DDDDDD", mean, "SSSSS", std, "FFFFF", pi)
             surr = ratio * adv
             if self.method == 'penalty':  # ppo penalty
                 kl = tfp.distributions.kl_divergence(old_pi, pi)
@@ -353,7 +354,7 @@ if __name__ == "__main__":
                     post_reward = [0, 0]
                 else:
                     if reward[0] != reward[1]:
-                        post_reward = [reward[0]-100, reward[1]] if reward[0]<reward[1] else [reward[0], reward[1]-100]
+                        post_reward = [reward[0]-100, reward[1]] if reward[0]<reward[1] else [reward[0] + 50, reward[1]-100]
                     else:
                         post_reward=[0, 0]
 

@@ -114,11 +114,21 @@ class Agent(object):
 
     def create_actor_model(self):
         steer_input = Input(shape=(ACTION_DIM))
-        state_input = Input(shape=(STATE_SIZE))
-        h1 = Dense(6400,activation='elu')(state_input)
-        h2 = Dense(3200,activation='elu')(h1)
-        h3 = Dense(800,activation='elu')(h2)
-        h4 = Dense(256,activation='elu')(h3)
+        state_input = Input(shape=(40, 40, 1))
+        # state_input = Input(shape=(STATE_SIZE))
+        # h1 = Dense(1600,activation='elu')(state_input)
+        # h2 = Dense(1200,activation='elu')(h1)
+        # h3 = Dense(800,activation='elu')(h2)
+        # h4 = Dense(256,activation='elu')(h3)
+
+        a_11 = Conv2D(8, 3, activation='relu', padding='same')(state_input)
+        a_1 = MaxPooling2D(pool_size=(2, 2), strides=None, padding='same')(a_11)
+        a_22 = Conv2D(16, 3, activation='relu', padding='same')(a_1)
+        a_2 = MaxPooling2D(pool_size=(2, 2), strides=None, padding='same')(a_22)
+        a_33 = Conv2D(8, 3, activation='relu', padding='same')(a_2)
+        a_5 = GlobalMaxPooling2D()(a_33)
+        h4 = Flatten()(a_5)
+
         state_output = Dense(128,activation='elu')(h4)
         steer_output = Dense(32, activation='elu')(steer_input)
         merge1 = Concatenate()([state_output,steer_output])
@@ -131,11 +141,21 @@ class Agent(object):
     
     def create_critic_model(self):
         steer_input_c = Input(shape=(ACTION_DIM))
-        state_input_c = Input(shape=(STATE_SIZE))
-        h1_c = Dense(6400,activation='elu')(state_input_c)
-        h2_c = Dense(3200,activation='elu')(h1_c)
-        h3_c = Dense(800,activation='elu')(h2_c)
-        h4_c = Dense(256,activation='elu')(h3_c)
+        state_input_c = Input(shape=(40, 40, 1))
+        # state_input_c = Input(shape=(STATE_SIZE))
+        # h1_c = Dense(1600,activation='elu')(state_input_c)
+        # h2_c = Dense(1200,activation='elu')(h1_c)
+        # h3_c = Dense(800,activation='elu')(h2_c)
+        # h4_c = Dense(256,activation='elu')(h3_c)
+
+        a_11 = Conv2D(8, 3, activation='relu', padding='same')(state_input_c)
+        a_1 = MaxPooling2D(pool_size=(2, 2), strides=None, padding='same')(a_11)
+        a_22 = Conv2D(16, 3, activation='relu', padding='same')(a_1)
+        a_2 = MaxPooling2D(pool_size=(2, 2), strides=None, padding='same')(a_22)
+        a_33 = Conv2D(8, 3, activation='relu', padding='same')(a_2)
+        a_5 = GlobalMaxPooling2D()(a_33)
+        h4_c = Flatten()(a_5)
+
         state_output_c = Dense(128,activation='elu')(h4_c)
         steer_output_c = Dense(32, activation='elu')(steer_input_c)
         merge1_c = Concatenate()([state_output_c,steer_output_c])
@@ -253,8 +273,9 @@ class Agent(object):
             critic_target_2_weights[i] = critic_model_2_weights[i]*self.tau + critic_target_2_weights[i]*(1-self.tau)
         self.target_critic_model_2.set_weights(critic_target_2_weights)
  
-    def act(self,s_t, control=None, get_action=np.ones(2, )):
+    def act(self,s_t, control=None, get_action=np.ones((2, 1))):
         s_t = s_t[np.newaxis, :].astype(np.float32)
+        s_t = np.reshape(s_t, (1, 40, 40, 1))
         get_action = get_action[np.newaxis, :].astype(np.float32)
         # print("========= Control is ===", control.steer)
         a_t = np.zeros((ACTION_DIM))
@@ -266,12 +287,14 @@ class Agent(object):
             a_t[1] = np.random.uniform(-self.action_bound_angle, self.action_bound_angle)
             # a_t[0][0] = control.steer
             # a_t[0][1] = control.throttle
-            return a_t
+            return a_t, a_t
         a_predict = self.actor_model([s_t, get_action])
         # action_out = np.clip(np.squeeze(self.noise.add_noise(a_predict, std=NOISE_EXPLORE_STD)), [-100, -self.action_bound_angle], [200, self.action_bound_angle])
         action_out = np.squeeze(self.noise.add_noise(a_predict, std=NOISE_EXPLORE_STD))
-        print("the origin action is ", a_predict, "the action_out is ", action_out)
-        return action_out
+        action_ctrl_t = np.array(action_out)
+        action_ctrl_t[0] = np.clip(action_ctrl_t[0] * 200, -100, 200)
+        action_ctrl_t[1] = np.clip(action_ctrl_t[1] * 30, -agent.action_bound_angle, agent.action_bound_angle)
+        return action_out, action_ctrl_t
 
     def stack_samples(self, samples):       #maybe
         s_ts = np.array([e[0] for e in samples], dtype='float32')
@@ -345,7 +368,7 @@ if __name__ == "__main__":
     agent = Agent()
     Gamemap = create_scenario('wrestling')
     env = wrestling(Gamemap)
-    env.max_step = 400
+    env.max_step = 500
 
     agent.load_model()
     agent.target_setweight()
@@ -379,15 +402,13 @@ if __name__ == "__main__":
                 step += 1
 
                 action_opponent = opponent_agent.act(obs_oppo_agent)        #opponent action
-                # action_opponent = [0,0]  #here we assume the opponent is not moving in the demo
 
-                action_ctrl= agent.act(obs_ctrl_agent) #action_ctrl[0] is force , action_ctrl[1] is angle
-                action_ctrl_t = np.array(action_ctrl)
-                action_ctrl_t[0] = np.clip(action_ctrl_t[0] * 200, -100, 200)
-                action_ctrl_t[1] = np.clip(action_ctrl_t[1] * 30, -agent.action_bound_angle, agent.action_bound_angle)
+                action_ctrl, action_ctrl_t= agent.act(obs_ctrl_agent) #action_ctrl[0] is force , action_ctrl[1] is angle
+
+                # action_opponent = [20,0] 
+                # action_ctrl_t = [15, 0]
+
                 action = [action_opponent, action_ctrl_t] if ctrl_agent_index == 1 else [action_ctrl_t, action_opponent]
-
-                print("action is ", action_ctrl)
                 next_state, reward, done, _ = env.step(action)
                 # reward[0] += 0.1
                 
@@ -398,15 +419,22 @@ if __name__ == "__main__":
                     next_obs_ctrl_agent, next_energy_ctrl_agent = next_state[ctrl_agent_index], env.agent_list[ctrl_agent_index].energy
                     next_obs_oppo_agent, next_energy_oppo_agent = next_state[1-ctrl_agent_index], env.agent_list[1-ctrl_agent_index].energy
                 next_obs_ctrl_agent = np.array(next_obs_ctrl_agent).flatten()
+
                 if not done:
                     post_reward = [0, 0]
                 else:
                     if reward[0] != reward[1]:
-                        post_reward = [reward[0]-100, reward[1]] if reward[0]<reward[1] else [reward[0], reward[1]-100]
+                        post_reward = [reward[0] - 100, reward[1]] if reward[0]<reward[1] else [reward[0] + 50, reward[1]]
                     else:
-                        post_reward=[0, 0]
+                        post_reward=[0, 0] 
+                post_reward += np.mean(obs_ctrl_agent)
 
-                agent.remember(obs_ctrl_agent, action_ctrl, reward[0], next_obs_ctrl_agent, done)
+                print("the origin action is ", action_ctrl, "the action out is", action_ctrl_t, "the reward is", post_reward[ctrl_agent_index], "the obs is", np.mean(obs_ctrl_agent))
+
+                state_1 = np.reshape(obs_ctrl_agent, (40, 40, 1))
+                state_2 = np.reshape(next_obs_ctrl_agent, (40, 40, 1))
+                agent.remember(state_1, action_ctrl, post_reward[ctrl_agent_index], state_2, done)
+                # agent.remember(obs_ctrl_agent, action_ctrl, post_reward[ctrl_agent_index], next_obs_ctrl_agent, done)
                 epoch_reward +=reward[0]
 
                 obs_oppo_agent, energy_oppo_agent = next_obs_oppo_agent, next_energy_oppo_agent
